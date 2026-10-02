@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=DeepSeek 小鲸鱼挂件 · 设置
+Name[en]=DeepSeek Whale Settings
+Comment=配置 API Key、大小、刷新间隔与吸附行为
+Exec=dsh-whale settings
+TryExec=dsh-whale
+Icon=dsh-whale
+Terminal=false
+Categories=Settings;Utility;
+Keywords=DeepSeek;balance;settings;设置;
+StartupNotify=false

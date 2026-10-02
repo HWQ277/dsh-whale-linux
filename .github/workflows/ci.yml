@@ -1,0 +1,170 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Syntax + imports (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install tkinter
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+
+      - name: Byte-compile every module
+        run: python -m compileall -q src/dshwhale
+
+      - name: Import every module (needs a display for tkinter)
+        run: |
+          xvfb-run -a python - <<'PY'
+          import importlib, sys
+          sys.path.insert(0, "src")
+          mods = ["config", "balance", "ledger", "imageio", "x11", "bubble_geom",
+                  "bubbles", "theme", "menu", "widget", "settings",
+                  "bubble_editor", "cli"]
+          for name in mods:
+              importlib.import_module("dshwhale." + name)
+              print("ok", name)
+          PY
+
+      - name: CLI smoke test
+        run: |
+          python dsh-whale --version
+          python dsh-whale --help > /dev/null
+
+  assets:
+    name: Assets and geometry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bundled assets present
+        run: |
+          set -e
+          for f in assets/DSniang1.png assets/DSniang02.png assets/rua.gif \
+                   assets/sounds/duck/press.mp3 assets/sounds/duck/release.mp3 \
+                   assets/sounds/fx1/press.mp3 assets/sounds/fx1/release.mp3; do
+            test -s "$f" || { echo "MISSING: $f"; exit 1; }
+          done
+          echo "all assets present"
+
+      - name: PNG/GIF decoders round-trip on the real art
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from dshwhale.imageio import load_image, load_animation, scale_nearest, flatten_on
+          img = load_image("assets/DSniang1.png")
+          assert img.width == 610 and img.height == 610, img.width
+          alpha = img.pixels[3::4]
+          assert min(alpha) == 0 and max(alpha) == 255, "alpha range"
+          small = scale_nearest(img, 105, 105)
+          assert len(flatten_on(small, (32, 49, 112))) == 105 * 105 * 3
+          anim = load_animation("assets/rua.gif")
+          assert len(anim) > 1, "gif frames"
+          print("decoders ok:", img.width, "x", img.height, len(anim), "gif frames")
+          PY
+
+      - name: Bubble geometry is well formed
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from dshwhale import bubble_geom as g
+          assert len(g.OUTER) >= 3, "outer contours"
+          assert len(g.INNER) >= 1, "inner contour"
+          for name, comps in (("OUTER", g.OUTER), ("INNER", g.INNER)):
+              for c in comps:
+                  assert len(c) >= 3, name
+                  for x, y in c:
+                      assert 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0, (name, x, y)
+          print("geometry ok:", [len(c) for c in g.OUTER], [len(c) for c in g.INNER])
+          PY
+
+  logic:
+    name: Balance / ledger / sizing logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Wallet selection follows the upstream preference order
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from dshwhale.balance import pick_wallet
+          infos = [{"currency": "USD", "total_balance": "5"},
+                   {"currency": "CNY", "total_balance": "0"},
+                   {"currency": "CNY", "total_balance": "11.84"}]
+          assert pick_wallet(infos)["total_balance"] == "11.84"
+          assert pick_wallet([{"currency": "USD", "total_balance": "5"}])["currency"] == "USD"
+          assert pick_wallet([]) is None
+          print("wallet selection ok")
+          PY
+
+      - name: Ledger separates spend from top-ups
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from dshwhale.ledger import Ledger, beijing_day
+          usage = {"date": beijing_day(), "lastBalance": None, "todayUsage": 0.0, "history": {}}
+          led = Ledger(usage)
+          led.update(100.0, "CNY")
+          led.update(97.5, "CNY")
+          assert abs(led.today_usage - 2.5) < 1e-9, led.today_usage
+          led.update(120.0, "CNY")          # top-up must NOT cancel spend
+          assert abs(led.today_usage - 2.5) < 1e-9, led.today_usage
+          led.update(118.0, "CNY")
+          assert abs(led.today_usage - 4.5) < 1e-9, led.today_usage
+          print("ledger ok")
+          PY
+
+      - name: Peak windows match upstream (weekends off-peak)
+        run: |
+          python - <<'PY'
+          import sys
+          from datetime import datetime
+          sys.path.insert(0, "src")
+          from dshwhale.ledger import is_peak, BEIJING
+          cases = [((2026, 8, 24, 9, 30), True), ((2026, 8, 24, 12, 30), False),
+                   ((2026, 8, 24, 15, 0), True), ((2026, 8, 24, 18, 0), False),
+                   ((2026, 8, 29, 10, 0), False), ((2026, 8, 30, 15, 0), False)]
+          for (y, m, d, hh, mm), want in cases:
+              got = is_peak(datetime(y, m, d, hh, mm, tzinfo=BEIJING))
+              assert got == want, ((y, m, d, hh, mm), got, want)
+          print("peak windows ok")
+          PY
+
+      - name: Module size levels follow bubbleModuleFontU
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "src")
+          from dshwhale.bubbles import font_units, default_bubbles, Bubble
+          assert font_units(1) == 40
+          assert font_units(50) == 240
+          assert font_units(6) == 60
+          b = Bubble.from_dict(default_bubbles()["first"])
+          levels = [m.size for line in b.lines for m in line]
+          assert levels == [8, 20, 4, 2, 4], levels
+          print("module sizing ok:", levels)
+          PY

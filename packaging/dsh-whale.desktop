@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=DeepSeek 小鲸鱼挂件
+Name[en]=DeepSeek Balance Whale
+GenericName=Account balance widget
+Comment=桌面常驻的 DeepSeek 余额小鲸鱼挂件
+Comment[en]=Floating whale showing your DeepSeek balance and today's spend
+Exec=dsh-whale run
+TryExec=dsh-whale
+Icon=dsh-whale
+Terminal=false
+Categories=Utility;Monitor;
+Keywords=DeepSeek;balance;widget;whale;余额;
+StartupNotify=false

@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Launcher for the DeepSeek whale widget.
+
+Runs straight from a source checkout (no install step) and also works when the
+package is installed into site-packages.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent
+SRC = REPO_ROOT / "src"
+if SRC.is_dir():
+    sys.path.insert(0, str(SRC))
+
+try:
+    from dshwhale.cli import main
+except ImportError as exc:  # pragma: no cover - helpful failure message
+    sys.stderr.write(
+        "无法导入 dshwhale 包：%s\n"
+        "请从仓库根目录运行，或先安装：  sudo pacman -U dsh-whale-linux-*.pkg.tar.zst\n" % exc
+    )
+    raise SystemExit(1)
+
+if __name__ == "__main__":
+    raise SystemExit(main())

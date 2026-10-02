@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build / packaging output
+pkg/
+src/pkg/
+*.pkg.tar.*
+dist/
+build/
+
+# Local editor / OS noise
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Runtime state — never commit these
+#   config.json holds the DeepSeek API key, and the lock/state files are local.
+widget.lock
+config.json
+*.log
